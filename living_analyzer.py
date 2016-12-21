@@ -1,79 +1,112 @@
 #!/usr/bin/python                                                                                                                                                                                                                                              
 import sys  
-from table_parser import TableParser
+from table_parser import Table
 
-def parse_basic_info(parser):
-    table = parser.table()
-    total = len(table)
-    print("总开播数：%d" % total)
+STOP_NORMAL = 0
+STOP_ABORT = 1
+STOP_EXCEPT = 2
 
-    total_duration = 0
-    for row in table:
-        total_duration += int(row["live_duration"])
+class LivingAnalyzer:
+    def __init__(self, table):
+        self.__table = table
+        self.__living_total = len(table)
+        self.__total_duration = self.parse_total_duration()
+        self.__user_total = len(table.unique("ext0"))
 
-    print("总开播时长：%d 秒(%.2f 小时)" % (total_duration, total_duration / 3600))
-    print("平均开播时长：%d 秒" % (total_duration / total))
+        total_stop_list = table.split_by_values("ext16", [STOP_NORMAL, STOP_ABORT, STOP_EXCEPT], lambda v : int(v))
+        self.__stop_normal_table = total_stop_list[STOP_NORMAL]
+        self.__stop_abort_table = total_stop_list[STOP_ABORT]
+        self.__stop_except_table = total_stop_list[STOP_EXCEPT]
 
-def parse_exception_stream(parser):
-    total = parser.table_lines_total()
-    sub_tables = parser.split_table_by_values("ext16", [0, 1, 2], lambda v : int(v))
-    normal_stop = len(sub_tables[0])
-    app_abort = len(sub_tables[1])
-    app_exception = len(sub_tables[2])
-    exception_stop = app_exception + app_abort
-    print("正常停播流：%d(%s)" % (normal_stop, format(normal_stop / total, ".2%")))
-    print("异常停播流：%d(%s)，其中终端中断：%d(%s)，终端崩溃：%d(%s)" % (exception_stop, format(exception_stop / total, ".2%"), app_abort, format(app_abort / total, ".2%"), app_exception, format(app_exception / total, ".2%")))
+        self.__stop_normal_count = len(total_stop_list[STOP_NORMAL])
+        self.__stop_abort_count = len(total_stop_list[STOP_ABORT])
+        self.__stop_except_count = len(total_stop_list[STOP_EXCEPT])
+        self.__not_stop_count = self.__stop_abort_count + self.__stop_except_count
+        self.__model_dimension = {
+                "正常停播" : self.__table,
+                "异常停播" : self.__stop_abort_table + self.__stop_except_table,
+                "终端中断停播" : self.__stop_abort_table,
+                "终端崩溃停播" : self.__stop_except_table,
+                }
 
-def parse_exception_model(parser, reasons):
-    table = parser.table()
-    total = len(table)
-    models = {}
-    for row in table:
-        reason = int(row["ext16"])
-        if reason in reasons:
-            model = row["md"]
+    def parse_total_duration(self):
+        total_duration = 0
+        for line in self.__table:
+            total_duration += int(line["live_duration"])
+        return total_duration
+
+    def show_basic_info(self):
+        print("总开播数：%d" % self.__living_total)
+        print("总开播用户：%d" % self.__user_total)
+        print("正常停播流：%d(%s)" % (self.__stop_normal_count, format(self.__stop_normal_count / self.__living_total, ".2%")))
+        print("异常停播流：%d(%s)，其中终端中断：%d(%s)，终端崩溃：%d(%s)"
+                % (self.__not_stop_count, format(self.__not_stop_count / self.__living_total, ".2%"),
+                    self.__stop_abort_count, format(self.__stop_abort_count / self.__living_total, ".2%"),
+                    self.__stop_except_count, format(self.__stop_except_count / self.__living_total, ".2%")))
+
+    @staticmethod
+    def parse_model_proportion(table):
+        models = {}
+        for line in table:
+            model = line["md"]
             if model in models:
-                models[row["md"]] += 1
+                models[line["md"]] += 1
             else:
-                models[row["md"]] = 1
-    top_n = 20
-    print("机型排行(Top %d)：" % top_n)
-    print("计次\t机型")
-    md_sorted = sorted(models.items(), key=lambda d: d[1], reverse = True)
-    for (k, v) in md_sorted:
-        print("%s\t%s" % (v, k))
-        top_n -= 1
-        if 0 == top_n:
-            break
+                models[line["md"]] = 1
+        return models
 
-def parse_exception_duration(parser, reasons):
-    table = parser.table()
-    total = len(table)
-    durations = []
-    for row in table:
-        reason = int(row["ext16"])
-        if reason in reasons:
-            duration = row["live_duration"]
-            durations.append(int(duration))
-    top_n = 20
-    print("时长排行(Top %d)：" % top_n)
-    print("开播时长（秒）")
-    durations.sort(reverse = True)
-    for d in durations:
-        print("%d" % d)
-        top_n -= 1
-        if 0 == top_n:
-            break
+    @staticmethod
+    def parse_user_proportion(table):
+        users = {}
+        for line in table:
+            model = line["ext0"]
+            if model in users:
+                users[line["ext0"]] += 1
+            else:
+                users[line["ext0"]] = 1
+        return users
+    
+    def show_model_proportion(self):
+        for (title, table) in self.__model_dimension.items():
+            top_n = 10
+            models = LivingAnalyzer.parse_model_proportion(table)
+            print("%s的机型总数：%d" % (title, len(models)))
+            print("%s机型排行(Top %d)：" % (title, top_n))
+            print("计次\t分类比\t大盘比\t机型")
+            md_sorted = sorted(models.items(), key=lambda d: d[1], reverse = True)
+            for (k, v) in md_sorted:
+                print("%s\t%s\t%s\t%s" % (v, format(v / len(table), ".2%"), format(v / self.__living_total, ".2%"), k))
+                top_n -= 1
+                if 0 == top_n:
+                    break
+
+    def parse_exception_duration(table, reasons):
+        durations = []
+        for line in table:
+            reason = int(line["ext16"])
+            if reason in reasons:
+                duration = line["live_duration"]
+                durations.append(int(duration))
+        top_n = 20
+        print("时长排行(Top %d)：" % top_n)
+        print("开播时长（秒）")
+        durations.sort(reverse = True)
+        for d in durations:
+            print("%d" % d)
+            top_n -= 1
+            if 0 == top_n:
+                break
 
 if __name__ == "__main__":
     if len(sys.argv) == 1:                                                                                                                                                                                                                                     
         print("Usage:")                                                                                                                                                                                                                                        
         print("%s data_source_file" % sys.argv[0])                                                                                                                                                                                                           
     else:                                                                                                                                                                                                                                                      
-        parser = TableParser(sys.argv[1])
-        parse_basic_info(parser)
-        parse_exception_stream(parser)
-        parse_exception_model(parser, [1, 2])
-        parse_exception_duration(parser, [1])
-        #split_table_by_values(table, "ext16", [1, 2], lambda v : int(v))
-        #print(split_table_by_condition(table, "ext16", lambda v : v == 2, lambda v : int(v)))
+        table = Table.parse_from_file(sys.argv[1])
+        table.reset(table.split_by_condition("ext0", lambda v : v == "ext0")["False"]) # 过滤多个 csv 文件拼接后多余的 fileds key
+        analyzer = LivingAnalyzer(table)
+        analyzer.show_basic_info()
+        analyzer.show_model_proportion()
+        #parse_exception_duration(table, [1])
+        #split_by_values(table, "ext16", [1, 2], lambda v : int(v))
+        #print(split_by_condition(table, "ext16", lambda v : v == 2, lambda v : int(v)))

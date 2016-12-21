@@ -92,3 +92,4 @@ ENV/
 *.xls
 *.csv
 *.swp
+.DS_Store

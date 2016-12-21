@@ -3,70 +3,112 @@
 import sys  
 
 CSV_SPLIT = ','
+DEBUG = False
 
-class TableParser:
-    def __init__(self, file_path, split = CSV_SPLIT):
-        self._fd = open(file_path)                                                                                                                                                                                                                                 
-        self._table = self.parse_data_source(self._fd, split)
-
-    def table(self):
-        return self._table
-
-    def table_lines_total(self):
-        return len(self._table)
-
-    def table_fields_total(self):
-        return len(self._table)
-
-    # Parse table from data source file such as *.csv
-    def parse_data_source(self, fd, split):
-        first = fd.readline()
-        keys = first.split(split)
-        cols_total = len(keys)
-        table = []
+class Table:
+    # Parse Table from data source file such as *.csv
+    @staticmethod
+    def parse_from_file(file_path, sp = CSV_SPLIT):
+        fd = open(file_path)                                                                                                                                                                                                                                 
+        first_line = fd.readline()
+        keys = first_line.split(sp)
+        fields_total = len(keys)
+        raw_table = []
         for line in fd:
-            row = {}
-            cols = line.split(CSV_SPLIT)
-            cols_num = len(cols)
-            if (cols_num != cols_total):
+            items = {}
+            fields = line.split(sp)
+            fields_num = len(fields)
+            if (fields_num != fields_total):
                 print("Fields not match: %s" % line)
                 continue
-            for index in range(cols_num):
-                row[keys[index]] = cols[index]
-            table.append(row)
-        print("Fields total: %d" % cols_total)
-        print("Lines total: %d" % len(table))
-        return table 
+            for index in range(fields_num):
+                items[keys[index]] = fields[index]
+            raw_table.append(items)
+        return Table(raw_table) 
+
+    def __init__(self, raw_table):
+        self.__raw_table = tuple(raw_table)
+        if DEBUG:
+            print("Fields: %s" % self.fields())
+            print("Fields total: %d" % self.fields_total())
+            print("Lines total: %d" % self.lines_total())
+
+    def __iter__(self):
+        for i in self.__raw_table:
+            yield i
+
+    def __len__(self):
+        return len(self.__raw_table) if None != self.__raw_table else 0
+
+    def __add__(self, other):
+        return Table(self.__raw_table + other.__raw_table)
+
+    def raw_table(self):
+        return self.__raw_table
+
+    def reset(self, raw_table):
+        if None != raw_table and self.__raw_table != raw_table:
+            self.__raw_table = tuple(raw_table)
+        return self.__raw_table
+
+    def lines_total(self):
+        return len(self.__raw_table) if None != self.__raw_table else 0
+
+    def fields_total(self):
+        return len(self.__raw_table[0]) if self.lines_total() > 0 else 0
+
+    def fields(self):
+        return list(self.__raw_table[0].keys()) if self.lines_total() > 0 else []
 
     # Split table by column values
-    def split_table_by_values(self, col_name, values, type_convert):
+    def split_by_values(self, field, values, type_convert = None):
         results = {}
-        for row in self._table:
-            v = type_convert(row[col_name])
-            if v in values:
-                if v in results:
-                    results[v].append(row)
-                else:
-                    results[v] = [row]
+        for line in self.__raw_table:
+            v = line[field]
+            try:
+                if None != type_convert:
+                    v = type_convert(line[field])
+            except:
+                print("Error occurred when handle '%s'!" % (line[field]))
+            else:
+                if v in values:
+                    if v in results:
+                        results[v].append(line)
+                    else:
+                        results[v] = [line]
+        for (k, v) in results.items():
+            results[k] = Table(v)
         return results
 
     # Split table by condition
-    def split_table_by_condition(self, col_name, condition, type_convert):
-        results = {}
-        for row in self._table:
-            v = type_convert(row[col_name])
-            if condition(v):
-                if v in results:
-                    results[v].append(row)
+    def split_by_condition(self, field, condition, type_convert = None):
+        results = {"True" : [], "False" : []}
+        for line in self.__raw_table:
+            v = line[field]
+            try:
+                if None != type_convert:
+                    v = type_convert(line[field])
+                if condition(v):
+                    results["True"].append(line)
                 else:
-                    results[v] = [row]
-        return results
+                    results["False"].append(line)
+            except:
+                print("Error occurred when handle line!")
 
+        return {"True" : Table(results["True"]), "False" : Table(results["False"])}
+    
+    def unique(self, field):
+        uniq = {}
+        for line in self.__raw_table:
+            key = line[field]
+            if key not in uniq:
+                uniq[key] = line
+        return Table(list(uniq.values()))
 
 if __name__ == "__main__":
     if len(sys.argv) == 1:                                                                                                                                                                                                                                     
         print("Usage:")                                                                                                                                                                                                                                        
         print("%s data_source_file" % sys.argv[0])                                                                                                                                                                                                           
     else:                                                                                                                                                                                                                                                      
-        parser = TableParser(sys.argv[1])
-        print(parser._table)
+        table = Table.parse_from_file(sys.argv[1])
+        print(table.raw_table())
