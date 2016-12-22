@@ -13,14 +13,14 @@ class LivingAnalyzer:
         self.__total_duration = self.parse_total_duration()
         self.__user_total = len(table.unique("ext0"))
 
-        total_stop_list = table.split_by_values("ext16", [STOP_NORMAL, STOP_ABORT, STOP_EXCEPT], lambda v : int(v))
-        self.__stop_normal_table = total_stop_list[STOP_NORMAL]
-        self.__stop_abort_table = total_stop_list[STOP_ABORT]
-        self.__stop_except_table = total_stop_list[STOP_EXCEPT]
+        total_stop_list = table.filter_by_value("ext16", [STOP_NORMAL, STOP_ABORT, STOP_EXCEPT], lambda v : int(v))
+        self.__stop_normal_table = total_stop_list[STOP_NORMAL] if STOP_NORMAL in total_stop_list else Table([], [])
+        self.__stop_abort_table = total_stop_list[STOP_ABORT] if STOP_ABORT in total_stop_list else Table([], [])
+        self.__stop_except_table = total_stop_list[STOP_EXCEPT] if STOP_EXCEPT in total_stop_list else Table([], [])
 
-        self.__stop_normal_count = len(total_stop_list[STOP_NORMAL])
-        self.__stop_abort_count = len(total_stop_list[STOP_ABORT])
-        self.__stop_except_count = len(total_stop_list[STOP_EXCEPT])
+        self.__stop_normal_count = len(self.__stop_except_table)
+        self.__stop_abort_count = len(self.__stop_abort_table)
+        self.__stop_except_count = len(self.__stop_except_table)
         self.__not_stop_count = self.__stop_abort_count + self.__stop_except_count
         self.__model_dimension = {
                 "正常停播" : self.__table,
@@ -108,5 +108,5 @@ if __name__ == "__main__":
         analyzer.show_basic_info()
         analyzer.show_model_proportion()
         #parse_exception_duration(table, [1])
-        #split_by_values(table, "ext16", [1, 2], lambda v : int(v))
+        #filter_by_value(table, "ext16", [1, 2], lambda v : int(v))
         #print(split_by_condition(table, "ext16", lambda v : v == 2, lambda v : int(v)))
