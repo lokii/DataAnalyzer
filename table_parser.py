@@ -73,10 +73,6 @@ class Table:
     def fields(self):
         return self.__fields_name if None != self.__fields_name else []
 
-    def get_field(self, line, field):
-        index = self.__fields_index[field]
-        return line[index]
-
     # Split table by column values
     def filter_by_value(self, field, values, convertor = None):
         results = {}
@@ -116,6 +112,20 @@ class Table:
 
         return {"True" : Table(self.fields(), results["True"]), "False" : Table(self.fields(), results["False"])}
 
+    def split_by_field(self, field, convertor = None):
+        results = {}
+        if len(self) == 0:
+            return results
+        index = self.__fields_index[field]
+        for line in self.__raw_table:
+            k = line[index] if None == convertor else convertor(line[index])
+            if k not in results:
+                results[k] = []
+            results[k].append(line)
+        for (k, v) in results.items():
+            results[k] = Table(self.fields(), v)
+        return results
+
     def operation_in_field(self, field, operator, convertor = None):
         if None == operator or None == field:
             return None
@@ -129,18 +139,31 @@ class Table:
 
         return result
 
-    def unique(self, field):
+    def unique(self, field, convertor = None):
+        if len(self) == 0:
+            return None
         index = self.__fields_index[field]
         uniq = {}
         for line in self.__raw_table:
-            key = line[index]
+            key = line[index] if None == convertor else convertor(line[index])
             if key not in uniq:
                 uniq[key] = line
         return Table(self.fields(), list(uniq.values()))
 
-    def sort(self, field, reverse = False):
+    def sort(self, field, revert = False):
         index = self.__fields_index[field]
-        self.__raw_table.sort(index, reverse)
+        self.__raw_table.sort(key = lambda v : v[index], reverse = revert)
+        return self
+
+    def get_field_sum(self, field, convertor = None):
+        index = self.__fields_index[field]
+        if None != convertor:
+            return sum(convertor(line[index]) for line in self.__raw_table)
+        else:
+            return sum(line[index] for line in self.__raw_table)
+
+    def get_field_avg(self, field, convertor = None):
+        return self.get_field_sum(field, convertor) / self.lines_total()
 
 if __name__ == "__main__":
     if len(sys.argv) == 1:                                                                                                                                                                                                                                     

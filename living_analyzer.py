@@ -10,7 +10,7 @@ class LivingAnalyzer:
     def __init__(self, table):
         self.__table = table
         self.__living_total = len(table)
-        self.__total_duration = self.parse_total_duration()
+        self.__total_duration = self.__table.get_field_sum("live_duration", lambda v : int(v))
         self.__user_total = len(table.unique("ext0"))
 
         total_stop_list = table.filter_by_value("ext16", [STOP_NORMAL, STOP_ABORT, STOP_EXCEPT], lambda v : int(v))
@@ -29,15 +29,10 @@ class LivingAnalyzer:
                 "终端崩溃停播" : self.__stop_except_table,
                 }
 
-    def parse_total_duration(self):
-        total_duration = 0
-        for line in self.__table:
-            total_duration += int(line["live_duration"])
-        return total_duration
-
     def show_basic_info(self):
         print("总开播数：%d" % self.__living_total)
         print("总开播用户：%d" % self.__user_total)
+        print("总开播时长：%d(%.2f 小时)" % (self.__total_duration, self.__total_duration / 3600))
         print("正常停播流：%d(%s)" % (self.__stop_normal_count, format(self.__stop_normal_count / self.__living_total, ".2%")))
         print("异常停播流：%d(%s)，其中终端中断：%d(%s)，终端崩溃：%d(%s)"
                 % (self.__not_stop_count, format(self.__not_stop_count / self.__living_total, ".2%"),
@@ -46,24 +41,13 @@ class LivingAnalyzer:
 
     @staticmethod
     def parse_model_proportion(table):
-        models = {}
-        for line in table:
-            model = line["md"]
-            if model in models:
-                models[line["md"]] += 1
-            else:
-                models[line["md"]] = 1
+        models = table.split_by_field("md")
         return models
 
     @staticmethod
     def parse_user_proportion(table):
         users = {}
-        for line in table:
-            model = line["ext0"]
-            if model in users:
-                users[line["ext0"]] += 1
-            else:
-                users[line["ext0"]] = 1
+        users = table.split_by_field("ext0")
         return users
     
     def show_model_proportion(self):
@@ -73,9 +57,10 @@ class LivingAnalyzer:
             print("%s的机型总数：%d" % (title, len(models)))
             print("%s机型排行(Top %d)：" % (title, top_n))
             print("计次\t分类比\t大盘比\t机型")
-            md_sorted = sorted(models.items(), key=lambda d: d[1], reverse = True)
+            md_sorted = sorted(models.items(), key=lambda d: len(d[1]), reverse = True)
             for (k, v) in md_sorted:
-                print("%s\t%s\t%s\t%s" % (v, format(v / len(table), ".2%"), format(v / self.__living_total, ".2%"), k))
+                c = len(v)
+                print("%s\t%s\t%s\t%s" % (c, format(c / len(table), ".2%"), format(c / self.__living_total, ".2%"), k))
                 top_n -= 1
                 if 0 == top_n:
                     break
@@ -107,6 +92,6 @@ if __name__ == "__main__":
         analyzer = LivingAnalyzer(table)
         analyzer.show_basic_info()
         analyzer.show_model_proportion()
-        #parse_exception_duration(table, [1])
-        #filter_by_value(table, "ext16", [1, 2], lambda v : int(v))
-        #print(split_by_condition(table, "ext16", lambda v : v == 2, lambda v : int(v)))
+        
+        every_day = table.split_by_field("reporttime", lambda v : v[0:8])
+        print(len(every_day))
