@@ -18,7 +18,7 @@ class LivingAnalyzer:
         self.__stop_abort_table = total_stop_list[STOP_ABORT] if STOP_ABORT in total_stop_list else Table([], [])
         self.__stop_except_table = total_stop_list[STOP_EXCEPT] if STOP_EXCEPT in total_stop_list else Table([], [])
 
-        self.__stop_normal_count = len(self.__stop_except_table)
+        self.__stop_normal_count = len(self.__stop_normal_table)
         self.__stop_abort_count = len(self.__stop_abort_table)
         self.__stop_except_count = len(self.__stop_except_table)
         self.__not_stop_count = self.__stop_abort_count + self.__stop_except_count
@@ -65,6 +65,23 @@ class LivingAnalyzer:
                 if 0 == top_n:
                     break
 
+    def show_push_strategy_proportion(self):
+        vt130 = table.filter_by_value("av", ["1.2.1.130"])["1.2.1.130"]
+        total130 = len(vt130)
+        if total130 > 0:
+            push_strategy = (vt130.split_by_field("ext9"))
+            #total_stop_except_count = len(vt130.split_by_condition("ext16", lambda v : v == 0, lambda v : int(v))["False"])
+            for (k, v) in push_strategy.items():
+                strategy_count = len(v)
+                print("推流策略%s占比 %s" % (k, format(strategy_count / total130, ".2%")))
+                push_stop_result = v.split_by_condition("ext16", lambda v : v == 0, lambda v : int(v))
+                push_stop_normal_count = len(push_stop_result["True"])
+                push_stop_except_count = len(push_stop_result["False"])
+                print(">正常停播占比 %s" % format(push_stop_normal_count / strategy_count, ".2%"))
+                print(">>异常停播占比 %s" % format(push_stop_except_count / strategy_count, ".2%"))
+
+
+
     def parse_exception_duration(table, reasons):
         durations = []
         for line in table:
@@ -89,9 +106,17 @@ if __name__ == "__main__":
     else:                                                                                                                                                                                                                                                      
         table = Table.parse_from_file(sys.argv[1])
         table.reset(table.split_by_condition("ext0", lambda v : v == "ext0")["False"]) # 过滤多个 csv 文件拼接后多余的 fileds key
+
         analyzer = LivingAnalyzer(table)
         analyzer.show_basic_info()
         analyzer.show_model_proportion()
-        
+        analyzer.show_push_strategy_proportion()
+
+        '''
         every_day = table.split_by_field("reporttime", lambda v : v[0:8])
-        print(len(every_day))
+        for (daily, t) in every_day.items():
+            print("=================== %s ==================" % daily)
+            analyzer = LivingAnalyzer(t)
+            analyzer.show_basic_info()
+            analyzer.show_model_proportion()
+        '''
